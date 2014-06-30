@@ -164,7 +164,7 @@ function conjugate_gradient2(A,b, iter, dim){
         roiminus1 = roi;
         
         check = numeric.norm2(r);
-        if (check < 5.0){
+        if (check < 5){
             return x;
         }
         

@@ -1,0 +1,376 @@
+    <!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+    <head>
+        <meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+            <title>stuff</title>
+            <script type="text/javascript" src="webgl-utils.js"></script>
+            <script type="text/javascript" src="gl-matrix.js"></script>
+            <script type="text/javascript" src="dat.gui.js"></script>
+            <script type="text/javascript" src="numeric-1.2.6.js"></script>
+            <script type="text/javascript" src="sparse_matrix.js"></script>
+            <script type="text/javascript" src="conjugate_gradient2.js"></script>
+            <script type="text/javascript" src="MarkerParticle.js"></script>
+            <script type="text/javascript" src="grid.js"></script>
+            <script type="text/javascript" src="grid2.js"></script>
+            
+            <script id="shader-fs" type="x-shader/x-fragment">
+                precision mediump float;
+                void main()
+                {
+                    gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+                    
+                }
+            </script>
+            
+            <script id="shader-vs" type="x-shader/x-vertex">
+                attribute vec3 vPosition;
+                uniform mat4 uPMatrix;
+                uniform mat4 uMVMatrix;
+                void main()
+                {
+                    //gl_Position = vPosition;
+                    gl_Position = uPMatrix * uMVMatrix * vec4(vPosition, 1.0);
+                    gl_PointSize = 2.0;
+                }
+            </script>
+            
+            <script type="text/javascript">
+                
+                var gl;
+                var shaderProgram;
+                var gridBuffer;
+                var gridVertices = new Float32Array((100*2+2)*6);
+                var markerBuffer;
+                var markerVertices = new Float32Array(100*100*8*8*3);
+                var text;
+                
+                
+                function initGL(){
+                    
+                    var canvas = window.document.getElementById("webGLCanvas");
+                    text = window.document.getElementById("textField");
+                    text.innerHTML = "moinmoin!!!";
+                    
+                    gl = canvas.getContext("experimental-webgl");
+                    
+                }
+            
+            function getShader(gl, id) {
+                var shaderScript = document.getElementById(id);
+                if (!shaderScript) {
+                    
+                    return null;
+                }
+                
+                var str = "";
+                var k = shaderScript.firstChild;
+                while (k) {
+                    if (k.nodeType == 3) {
+                        str += k.textContent;
+                    }
+                    k = k.nextSibling;
+                }
+                
+                var shader;
+                if (shaderScript.type == "x-shader/x-fragment") {
+                    shader = gl.createShader(gl.FRAGMENT_SHADER);
+                } else if (shaderScript.type == "x-shader/x-vertex") {
+                    shader = gl.createShader(gl.VERTEX_SHADER);
+                } else {
+                    return null;
+                }
+                
+                gl.shaderSource(shader, str);
+                gl.compileShader(shader);
+                
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    alert(gl.getShaderInfoLog(shader));
+                    return null;
+                }
+                
+                return shader;
+            }
+            
+            var mvMatrix;
+            var pMatrix;
+            
+            function initShaders(){
+                
+                var fragmentShader = getShader(gl,"shader-fs");
+                var vertexShader = getShader(gl, "shader-vs");
+                shaderProgram = gl.createProgram();
+                
+                gl.attachShader(shaderProgram, vertexShader);
+                gl.attachShader(shaderProgram, fragmentShader);
+                gl.linkProgram(shaderProgram);
+                
+                gl.useProgram(shaderProgram);
+                gl.clearColor(0.0, 0.0, 0.0, 1.0);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+                
+                shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "vPosition");
+                gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+                
+                mvMatrix = new mat4.create();
+                mat4.identity(mvMatrix);
+                
+                mat4.translate(mvMatrix, mvMatrix, [0,0,-3.0]);
+                
+                var right = 1;//+0.5;
+                var left = -1;//-0.5;
+                var upper = 1;//+0.5;
+                var lower = -1;//-0.5;
+                var zFar = 100.0;
+                var zNear = 0.1;
+                pMatrix = new Float32Array(
+                                           [2/(right-left),0,0,0,
+                                            0, 2/(upper-lower),0,0,
+                                            0,0,-2/(zFar-zNear),0,
+                                            -(right+left)/(right-left), -(upper+lower)/(upper-lower), -(zFar+zNear)/(zFar-zNear),1]);
+                                            
+                var mvUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+                gl.uniformMatrix4fv(mvUniform, false, mvMatrix);
+                                            
+                var pUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+                gl.uniformMatrix4fv(pUniform, false, pMatrix);
+                         
+                gridBuffer = gl.createBuffer();
+                markerBuffer = gl.createBuffer();
+                                            
+            }
+            
+            var initgridSize=90;
+            var initdisplaySize=70;
+            var initMarkers=1;
+            
+            grid2 = new grid2();
+            grid2.init(initgridSize, initdisplaySize, initMarkers);
+            
+            function setGridBuffers(){
+                
+                var cellWidth = 2 / grid2.gridSize;
+                for (var i = 0;i<grid2.gridSize+1;i++){
+                    gridVertices[i*12] = -1 + i*cellWidth;
+                    gridVertices[i*12+1] = -1;
+                    gridVertices[i*12+2] = 0;
+                    
+                    gridVertices[i*12+3] = -1 + i*cellWidth;
+                    gridVertices[i*12+4] = 1;
+                    gridVertices[i*12+5] = 0;
+                    
+                    gridVertices[i*12+6] = -1;
+                    gridVertices[i*12+7] = -1 + i*cellWidth;
+                    gridVertices[i*12+8] = 0;
+                    
+                    gridVertices[i*12+9] = 1;
+                    gridVertices[i*12+10] = -1 + i*cellWidth;
+                    gridVertices[i*12+11] = 0;
+                    
+                }
+                
+                gl.bindBuffer(gl.ARRAY_BUFFER, gridBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, gridVertices, gl.STATIC_DRAW);
+                
+            }
+            
+            function setMarkerBuffers(){
+                
+                for (var i = 0; i<grid2.gridSize*grid2.gridSize*grid2.markersPerCell*grid2.markersPerCell;i++){
+                    markerVertices[i*3] = (2*grid2.markers[i].getPosition()[0]/grid2.displaySize)-1;
+                    markerVertices[i*3+1] = (2*grid2.markers[i].getPosition()[1]/grid2.displaySize)-1;
+                    markerVertices[i*3+2] = 0;
+                }
+                
+                gl.bindBuffer(gl.ARRAY_BUFFER, markerBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, markerVertices, gl.STATIC_DRAW);
+               
+                
+            }
+            
+            function drawScene(){
+                
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+                
+                setMarkerBuffers();
+                //gl.bindBuffer(gl.ARRAY_BUFFER, gridBuffer);
+                //gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
+                //gl.drawArrays(gl.LINES, 0, (grid2.gridSize+1)*4);
+                
+                gl.bindBuffer(gl.ARRAY_BUFFER, markerBuffer);
+                gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
+                gl.drawArrays(gl.TRIANGLES, 0, grid2.gridSize*grid2.gridSize*grid2.markersPerCell*grid2.markersPerCell);
+                
+            }
+            
+            var Params = function(){
+                this.displaySize = initdisplaySize;
+                this.gridSize = initgridSize;
+                this.markersPerCell = initMarkers;
+            }
+            
+            var param1;
+            var param2;
+            var factor = 1;
+            var setu=0;
+            var setv=0;
+            
+            function nextFrame(){
+                
+                //grid2.uvalues[2053]=1;
+                //grid2.uvalues[1184]=3;
+                //grid2.uvalues[1215]=-4;
+                
+                if (setu){
+                    grid2.uvalues[param1*(grid2.gridSize+1)+param2]=factor*2;
+                }
+                else if(setv){
+                    grid2.vvalues[param1*(grid2.gridSize+1)+param2]=factor*2;
+                }
+                grid2.advectAll();
+                grid2.solvePressure();
+                grid2.updateVelocities();
+                grid2.moveMarkers();
+                
+            }
+            
+            function webGLStart(){
+                
+                
+                initGL();
+                initShaders();
+                gl.clearColor(0.0, 0.0, 0.0, 1.0); // Hintergrund löschen in Farbe 0
+                setGridBuffers();
+                setMarkerBuffers();
+                
+                var gui = new dat.GUI();
+                var params = new Params();
+                
+                var controller2 = gui.add(params, 'displaySize');
+                var controller3 = gui.add(params, 'gridSize');
+                var controller4 = gui.add(params, 'markersPerCell').step(1);
+                
+                controller2.onFinishChange(function(value){
+                                           setu=0;
+                                           setv=0;
+                    grid2.init(grid2.gridSize, value, grid2.markersPerCell);
+                    setGridBuffers();
+                });
+                                           
+                controller3.onFinishChange(function(value){
+                                           setu=0;
+                                           setv=0;
+                    grid2.init(value, grid2.displaySize, grid2.markersPerCell);
+                    setGridBuffers();
+                 });
+                 
+                 controller4.onFinishChange(function(value){
+                                            setu=0;
+                                            setv=0;
+                    grid2.init(grid2.gridSize, grid2.displaySize, value);
+                    setGridBuffers();
+                });
+                
+                
+                canvas = document.getElementById("webGLCanvas");
+                canvas.onmousemove = mouseMove;
+                canvas.onmousedown = mouseDown;
+                
+                g_DrawInterval = setInterval(nextFrame,10);
+                
+                var renderLoop = function() {
+            
+                    requestAnimFrame(renderLoop);
+                    drawScene();
+                    
+                };
+                
+                renderLoop();
+            }
+            
+            
+            
+            function mouseMove(event)   {
+               
+                cellWidthDsp = 650/grid2.gridSize;
+                x = event.clientX-8;
+                y = event.clientY-8;
+               
+                tempx = x/cellWidthDsp;
+                tempy = y/cellWidthDsp;
+                
+                column = Math.floor(tempx);
+                row = grid2.gridSize-1-Math.floor(tempy);
+                
+                
+                tempxmod = tempx%1;
+                tempymod = tempy%1;
+                
+                onPosition = 0;
+                
+                cellx = column;
+                celly = row;
+                
+                text.innerHTML=tempxmod+"; "+tempymod+"; "+column+"; "+row;
+                if ((tempxmod>0.7 || tempxmod<0.3) && tempymod>0.2 && tempymod<0.8){
+                    setu=1;
+                    setv=0;
+                    if (tempxmod>0.7){
+                        factor = 1;
+                        temp = column +1 ;
+                        text.innerHTML = "u: "+row+"*("+grid2.gridSize+"+1)+"+temp+"="+(row*(grid2.gridSize+1)+temp);
+                        param1 = row;
+                        param2 = temp;
+                    }
+                    else{
+                        factor = -1;
+                        text.innerHTML = "u: "+row+"*("+grid2.gridSize+"+1)+"+column+"="+(row*(grid2.gridSize+1)+column);
+                        param1 = row;
+                        param2 = column;
+                    }
+                    
+                }
+                
+                if ((tempymod>0.7 || tempymod<0.3) && tempxmod>0.2 && tempxmod<0.8){
+                    setv=1;
+                    setu=0;
+                    if (tempymod<0.3){
+                        factor = 1;
+                        temp = row+1;
+                        text.innerHTML = "v: "+column+"*("+grid2.gridSize+"+1)+"+temp+"="+(column*(grid2.gridSize+1)+temp);
+                        param1 = column;
+                        param2 = temp;
+                    }
+                    else{
+                        factor = -1;
+                        text.innerHTML = "v: "+column+"*("+grid2.gridSize+"+1)+"+row+"="+(column*(grid2.gridSize+1)+row);
+                        param1 = column;
+                        param2 = row;
+                    }
+                    
+                }
+                
+            }
+
+            function mouseDown(event){
+              
+              setVelocity = onPosition;
+              setParam1 = param1;
+              setParam2 = param2;
+              
+            }
+
+            window.onload = function () {
+                
+                webGLStart();
+                
+            };
+            
+                </script>
+            
+            </head>
+    <body>
+        <canvas id="webGLCanvas" width="650" height="650"></canvas>
+        <div id="textField">Hallo:</canvas>
+            </body>
+    
+</html>

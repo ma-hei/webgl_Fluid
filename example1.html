@@ -1,0 +1,291 @@
+
+<html>
+    
+    <head>
+       
+        <title>Fluid</title>
+        <meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+            
+            <script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
+            <script type="text/javascript" src="webgl-utils.js"></script>
+            <script type="text/javascript" src="numeric-1.2.6.js"></script>
+            <script type="text/javascript" src="sparse_matrix.js"></script>
+            <script type="text/javascript" src="conjugate_gradient2.js"></script>
+            <script type="text/javascript" src="MarkerParticle.js"></script>
+            <script type="text/javascript" src="grid.js"></script>
+            
+            <script id="shader-fs" type="x-shader/x-fragment">
+                precision mediump float;
+                
+                void main(void) {
+                    gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+                }
+            </script>
+            
+            <script id="shader-vs" type="x-shader/x-vertex">
+                attribute vec3 aVertexPosition;
+                               
+                uniform mat4 uMVMatrix;
+                uniform mat4 uPMatrix;
+                
+                varying vec4 vColor;
+                
+                void main(void) {
+                    gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+                    gl_PointSize = 4.0;
+                }
+            </script>
+            
+            
+            <script type="text/javascript">
+                
+                var gl;
+                
+            function initGL(canvas) {
+                    try {
+                        gl = canvas.getContext("experimental-webgl");
+                        gl.viewportWidth = canvas.width;
+                        gl.viewportHeight = canvas.height;
+                    } catch (e) {
+                    }
+                    if (!gl) {
+                        alert("Could not initialise WebGL, sorry :-(");
+                    }
+                }
+            
+            
+            function getShader(gl, id) {
+                var shaderScript = document.getElementById(id);
+                if (!shaderScript) {
+                    document.write("nop");
+                    return null;
+                }
+                
+                var str = "";
+                var k = shaderScript.firstChild;
+                while (k) {
+                    if (k.nodeType == 3) {
+                        str += k.textContent;
+                    }
+                    k = k.nextSibling;
+                }
+                
+                var shader;
+                if (shaderScript.type == "x-shader/x-fragment") {
+                    shader = gl.createShader(gl.FRAGMENT_SHADER);
+                } else if (shaderScript.type == "x-shader/x-vertex") {
+                    shader = gl.createShader(gl.VERTEX_SHADER);
+                } else {
+                    return null;
+                }
+                
+                gl.shaderSource(shader, str);
+                gl.compileShader(shader);
+                
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    alert(gl.getShaderInfoLog(shader));
+                    return null;
+                }
+                
+                return shader;
+            }
+            
+            
+            var shaderProgram;
+            
+            function initShaders() {
+                var fragmentShader = getShader(gl, "shader-fs");
+                var vertexShader = getShader(gl, "shader-vs");
+                
+                shaderProgram = gl.createProgram();
+                gl.attachShader(shaderProgram, vertexShader);
+                gl.attachShader(shaderProgram, fragmentShader);
+                gl.linkProgram(shaderProgram);
+                
+                if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+                    alert("Could not initialise shaders");
+                }
+                
+                gl.useProgram(shaderProgram);
+                
+                shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+                gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+                
+                shaderProgram.vertexColorAttribute = gl.getAttribLocation(shaderProgram, "aVertexColor");
+                gl.enableVertexAttribArray(shaderProgram.vertexColorAttribute);
+                
+                shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+                shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+            }
+            
+            
+            var mvMatrix = mat4.create();
+            var mvMatrixStack = [];
+            var pMatrix = mat4.create();
+            
+            function mvPushMatrix() {
+                var copy = mat4.create();
+                mat4.set(mvMatrix, copy);
+                mvMatrixStack.push(copy);
+            }
+            
+            function mvPopMatrix() {
+                if (mvMatrixStack.length == 0) {
+                    throw "Invalid popMatrix!";
+                }
+                mvMatrix = mvMatrixStack.pop();
+            }
+            
+            
+            function setMatrixUniforms() {
+                gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+                gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+            }
+            
+            
+            function degToRad(degrees) {
+                return degrees * Math.PI / 180;
+            }
+            
+            
+            var triangleVertexPositionBuffer;
+            var triangleVertexColorBuffer;
+            var squareVertexPositionBuffer;
+            var squareVertexColorBuffer;
+            
+            grid = new grid(60);
+            
+            function initBuffers() {
+                
+              
+                
+                markerverticesPositionBuffer = gl.createBuffer();
+               
+
+                
+            }
+            
+            
+            var rTri = 0;
+            var rSquare = 0;
+            var markervertices = new Array(grid.markers.length*3);
+            var markerverticesPositionBuffer = gl.createBuffer();
+            
+            function drawScene() {
+                gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+                
+                mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 200.0, pMatrix);
+                
+                mat4.identity(mvMatrix);
+                mat4.translate(mvMatrix, [0.0, 0.0, -100.0]);
+                
+                //mvPushMatrix();
+                //mat4.rotate(mvMatrix, degToRad(rTri), [0, 1, 0]);
+                
+              
+                //gl.bindBuffer(gl.ARRAY_BUFFER, vverticesPositionBuffer);
+                //gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, vverticesPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+                //gl.lineWidth(1.0);
+                //gl.drawArrays(gl.POINTS, 0, vverticesPositionBuffer.numItems);
+                
+                //gl.bindBuffer(gl.ARRAY_BUFFER, uverticesPositionBuffer);
+                //gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, uverticesPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+                //gl.lineWidth(1.0);
+                //gl.drawArrays(gl.POINTS, 0, uverticesPositionBuffer.numItems);
+                
+                
+                
+                gl.bindBuffer(gl.ARRAY_BUFFER, markerverticesPositionBuffer);
+                
+                
+                for (var i=0;i<grid.markers.length;i++){
+                    markervertices[i*3] = grid.markers[i].getPosition()[0]-40;
+                    markervertices[i*3+1] = grid.markers[i].getPosition()[1]-40;
+                    markervertices[i*3+2] = 0;
+                }
+                
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(markervertices), gl.STATIC_DRAW);
+                markerverticesPositionBuffer.itemSize = 3;
+                markerverticesPositionBuffer.numItems = grid.markers.length;
+
+                
+                gl.bindBuffer(gl.ARRAY_BUFFER, markerverticesPositionBuffer);
+                gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, markerverticesPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+                gl.lineWidth(1.0);
+                gl.drawArrays(gl.POINTS, 0, markerverticesPositionBuffer.numItems);
+                
+                
+               
+                
+                setMatrixUniforms();
+                
+                
+            }
+            
+            
+            var lastTime = 0;
+            
+            function animate() {
+                var timeNow = new Date().getTime();
+                if (lastTime != 0) {
+                    var elapsed = timeNow - lastTime;
+                    
+                    rTri += (90 * elapsed) / 1000.0;
+                    rSquare += (75 * elapsed) / 1000.0;
+                }
+                lastTime = timeNow;
+            }
+            
+            var counter =0;
+            function tick() {
+                //document.write(counter);
+               //grid.uvalues[400] = -15;
+               grid.uvalues[1942] = -6;
+               grid.uvalues[1902] = 6;
+               grid.vvalues[1780] = 6;
+               grid.vvalues[1822] = -6;
+              // grid.vvalues[1620] = 0.1;
+              // grid.vvalues[2045] = -0.1;
+               //grid.uvalues[2025] = 14;
+               //grid.uvalues[3095] = 2;
+               //grid.vvalues[220] = -3;
+                grid.advectAll();
+                grid.solvePressure();
+                grid.updateVelocities();
+                grid.moveMarkers();
+                //document.write(grid.markers[0].getPosition()[0]+"</br>");
+                
+                requestAnimFrame(tick);
+                drawScene();
+               // animate();
+                
+                
+            }
+            
+            
+            function webGLStart() {
+                var canvas = document.getElementById("fluid");
+                initGL(canvas);
+                initShaders();
+                initBuffers();
+                
+                gl.clearColor(0.0, 0.0, 0.0, 1.0);
+                gl.enable(gl.DEPTH_TEST);
+                
+                tick();
+            }
+            
+                </script>
+            
+    </head>
+    
+    
+    <body onload="webGLStart();">
+       
+        
+        <canvas id="fluid" style="border: none;" width="500" height="500"></canvas>
+        
+            </body>
+    
+</html>
